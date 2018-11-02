@@ -234,7 +234,11 @@ func readRespData(v *MMDispenser) ([]byte, error) {
 		return nil, fmt.Errorf("Response verification failed")
 	}
 
-	buf = buf[3:]
+	if buf[2] != TextStart || buf[len(buf)-1] != TextEnd {
+		return nil, fmt.Errorf("Response format invalid")
+	}
+
+	buf = buf[4:len(buf)-1]
 
 	if v.logging {
 		fmt.Printf("<- %X\n", buf)

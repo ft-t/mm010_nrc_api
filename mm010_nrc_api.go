@@ -36,6 +36,26 @@ const (
 	EotResponse   ResponseType = 0x04
 )
 
+type StatusCode byte
+
+const (
+	GoodOperation        StatusCode = 0x20
+	FeedFailure          StatusCode = 0x21
+	MistrackedNoteAtExit StatusCode = 0x24
+	TooLongAtExit        StatusCode = 0x25
+	BlockedExit          StatusCode = 0x26
+	TransportError       StatusCode = 0x2A
+	DoubleDetectError    StatusCode = 0x2C
+	DivertedError        StatusCode = 0x2D
+	WrongCount           StatusCode = 0x2E
+	NoteMissingAtDD      StatusCode = 0x2F
+	RejectRateExceeded   StatusCode = 0x30
+	NonVolatileRAMError  StatusCode = 0x34
+	OperationTimeout     StatusCode = 0x36
+	InternalQueError     StatusCode = 0x37
+	InvalidCommand       StatusCode = 0x4F
+)
+
 type MMDispenser struct {
 	config  *serial.Config
 	port    *serial.Port
@@ -93,6 +113,42 @@ func (s *MMDispenser) Status() (Status, error) {
 
 func (s *MMDispenser) Reset() {
 	sendRequest(s, 0x44, []byte{})
+}
+
+func (s *MMDispenser) Purge() (StatusCode, byte, error) {
+	sendRequest(s, 0x41, []byte{})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return StatusCode(response[0]), response[1] - 0x20, nil
+}
+
+func (s *MMDispenser) Dispense(count byte) (StatusCode, byte, byte, error) {
+	sendRequest(s, 0x42, []byte{count + 0x20})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return StatusCode(response[0]), response[1] - 0x20, response[2] - 0x20, nil
+}
+
+func (s *MMDispenser) TestMode() (StatusCode, error) {
+	sendRequest(s, 0x54, []byte{})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return StatusCode(response[0]), nil
 }
 
 func (s *MMDispenser) Ack() {
@@ -238,7 +294,7 @@ func readRespData(v *MMDispenser) ([]byte, error) {
 		return nil, fmt.Errorf("Response format invalid")
 	}
 
-	buf = buf[4:len(buf)-1]
+	buf = buf[4 : len(buf)-1]
 
 	if v.logging {
 		fmt.Printf("<- %X\n", buf)

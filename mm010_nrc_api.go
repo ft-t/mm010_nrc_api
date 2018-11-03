@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	RequestStart          = 0x04
-	ResponseStart         = 0x01
-	CommunicationIdentify = 0x30
-	TextStart             = 0x02
-	TextEnd               = 0x03
+	RequestStart          byte = 0x04
+	ResponseStart         byte = 0x01
+	CommunicationIdentify byte = 0x30
+	TextStart             byte = 0x02
+	TextEnd               byte = 0x03
 )
 
 type Baud int
@@ -73,7 +73,9 @@ type Status struct {
 }
 
 func NewConnection(path string, baud Baud, logging bool) (MMDispenser, error) {
-	c := &serial.Config{Name: path, Baud: int(baud), ReadTimeout: 5 * time.Second} // TODO
+	c := &serial.Config{Name: path, Baud: int(baud), ReadTimeout: 5 * time.Second, Parity: serial.ParityEven, StopBits: serial.Stop1,
+		Size: 7}
+
 	o, err := serial.OpenPort(c)
 
 	res := MMDispenser{}
@@ -111,12 +113,26 @@ func (s *MMDispenser) Status() (Status, error) {
 	return status, err
 }
 
-func (s *MMDispenser) Reset() {
+func (s *MMDispenser) Reset() error {
 	sendRequest(s, 0x44, []byte{})
+	_, err := readRespCode(s)
+	return err
 }
 
 func (s *MMDispenser) Purge() (StatusCode, byte, error) {
 	sendRequest(s, 0x41, []byte{})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return StatusCode(response[0]), response[1] - 0x20, nil
+}
+
+func (s *MMDispenser) ConfigurationStatus() (StatusCode, byte, error) {
+	sendRequest(s, 0x46, []byte{})
 
 	response, err := readResponse(s)
 
@@ -141,6 +157,18 @@ func (s *MMDispenser) Dispense(count byte) (StatusCode, byte, byte, error) {
 
 func (s *MMDispenser) TestMode() (StatusCode, error) {
 	sendRequest(s, 0x54, []byte{})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return StatusCode(response[0]), nil
+}
+
+func (s *MMDispenser) BasicRead() (StatusCode, error) {
+	sendRequest(s, 0x52, []byte{0x44, 0x2F, 0x31, 0x31, 0x35})
 
 	response, err := readResponse(s)
 
@@ -187,6 +215,8 @@ func readResponse(v *MMDispenser) ([]byte, error) {
 	if resp != EotResponse {
 		return nil, errors.New("Response not EOT")
 	}
+
+	time.Sleep(time.Millisecond * 200)
 
 	return data, nil
 }
@@ -253,6 +283,8 @@ func readRespData(v *MMDispenser) ([]byte, error) {
 	readTriesCount := 0
 	maxReadCount := 1050
 
+	lastRead := false
+
 	for ; ; {
 		readTriesCount += 1
 
@@ -269,7 +301,11 @@ func readRespData(v *MMDispenser) ([]byte, error) {
 		totalRead += n
 		buf = append(buf, innerBuf[:n]...)
 
-		if totalRead < 6 {
+		if len(buf) > 2 && buf[len(buf)-2] == TextEnd {
+			lastRead = true
+		}
+
+		if lastRead == false {
 			continue
 		}
 
@@ -277,6 +313,7 @@ func readRespData(v *MMDispenser) ([]byte, error) {
 	}
 
 	if buf[0] != ResponseStart || buf[1] != CommunicationIdentify {
+		fmt.Printf("<- %X\n", buf)
 		return nil, fmt.Errorf("Response format invalid")
 	}
 

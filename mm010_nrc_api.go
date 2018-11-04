@@ -56,6 +56,29 @@ const (
 	InvalidCommand       StatusCode = 0x4F
 )
 
+type DataItem byte
+
+const (
+	ProgramID                        DataItem = 100
+	MachineID                        DataItem = 101
+	MaxNumberOfNotesInOneTransaction DataItem = 104
+	Baudrate                         DataItem = 115
+	Parity                           DataItem = 116
+	DispenseCounterLifelong          DataItem = 303
+	RejectCounterLifelong            DataItem = 304
+	TotalProcessedCounterLifelong    DataItem = 305
+	DispenseCounterTrip              DataItem = 306
+	RejectCounterTrip                DataItem = 307
+	TotalProcessedCcounterTrip       DataItem = 308
+	TransactionCounterLifelong       DataItem = 313
+	TransactionCounterTrip           DataItem = 314
+	ThroatSensorCalibrationValue     DataItem = 350
+	LearningNotes                    DataItem = 392
+	RejectReasonCounter              DataItem = 501
+	ErrorStatusCounter               DataItem = 502
+	MachineStatus                    DataItem = 503
+)
+
 type MMDispenser struct {
 	config  *serial.Config
 	port    *serial.Port
@@ -113,26 +136,8 @@ func (s *MMDispenser) Status() (Status, error) {
 	return status, err
 }
 
-func (s *MMDispenser) Reset() error {
-	sendRequest(s, 0x44, []byte{})
-	_, err := readRespCode(s)
-	return err
-}
-
 func (s *MMDispenser) Purge() (StatusCode, byte, error) {
 	sendRequest(s, 0x41, []byte{})
-
-	response, err := readResponse(s)
-
-	if err != nil {
-		return 0, 0, err
-	}
-
-	return StatusCode(response[0]), response[1] - 0x20, nil
-}
-
-func (s *MMDispenser) ConfigurationStatus() (StatusCode, byte, error) {
-	sendRequest(s, 0x46, []byte{})
 
 	response, err := readResponse(s)
 
@@ -155,6 +160,96 @@ func (s *MMDispenser) Dispense(count byte) (StatusCode, byte, byte, error) {
 	return StatusCode(response[0]), response[1] - 0x20, response[2] - 0x20, nil
 }
 
+func (s *MMDispenser) TestDispense(count byte) (StatusCode, byte, byte, error) {
+	sendRequest(s, 0x43, []byte{count + 0x20})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return StatusCode(response[0]), response[1] - 0x20, response[2] - 0x20, nil
+}
+
+func (s *MMDispenser) Reset() error {
+	sendRequest(s, 0x44, []byte{})
+	_, err := readRespCode(s)
+	return err
+}
+
+func (s *MMDispenser) LastStatus() (StatusCode, byte, byte, error) {
+	sendRequest(s, 0x45, []byte{})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return StatusCode(response[0]), response[1] - 0x20, response[2] - 0x20, nil
+}
+
+func (s *MMDispenser) ConfigurationStatus() (byte, byte, error) {
+	sendRequest(s, 0x46, []byte{})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return response[0] - 0x20, response[1] - 0x20, nil
+}
+
+func (s *MMDispenser) DoubleDetectDiagnostics() (StatusCode, byte, byte, error) {
+	sendRequest(s, 0x47, []byte{})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return StatusCode(response[0]), response[1] - 0x20, response[2] - 0x20, nil
+}
+
+func (s *MMDispenser) SensorDiagnostics() (StatusCode, byte, byte, error) {
+	sendRequest(s, 0x48, []byte{})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return StatusCode(response[0]), response[1] - 0x20, response[2] - 0x20, nil
+}
+
+func (s *MMDispenser) SingleNoteDispense() (StatusCode, byte, byte, error) {
+	sendRequest(s, 0x4A, []byte{})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return StatusCode(response[0]), response[1] - 0x20, response[2] - 0x20, nil
+}
+
+func (s *MMDispenser) SingleNoteEject() (StatusCode, byte, byte, error) {
+	sendRequest(s, 0x4B, []byte{})
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return StatusCode(response[0]), response[1] - 0x20, response[2] - 0x20, nil
+}
+
 func (s *MMDispenser) TestMode() (StatusCode, error) {
 	sendRequest(s, 0x54, []byte{})
 
@@ -167,16 +262,42 @@ func (s *MMDispenser) TestMode() (StatusCode, error) {
 	return StatusCode(response[0]), nil
 }
 
-func (s *MMDispenser) BasicRead() (StatusCode, error) {
-	sendRequest(s, 0x52, []byte{0x44, 0x2F, 0x31, 0x31, 0x35})
+func (s *MMDispenser) ReadData(item DataItem, param string) (string, error) {
+	str := fmt.Sprintf("D/%3d", item)
+
+	if len(param) > 0 {
+		str += fmt.Sprintf("/%s", param)
+	}
+
+	sendRequest(s, 0x52, []byte(str))
 
 	response, err := readResponse(s)
 
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
-	return StatusCode(response[0]), nil
+	if response[0] != 0x30 {
+		return "", errors.New("illegal command")
+	}
+
+	return string(response[1:]), nil
+}
+
+func (s *MMDispenser) WriteData(item DataItem, data string) error {
+	sendRequest(s, 0x57, []byte(fmt.Sprintf("D/%3d/%s", item, data)))
+
+	response, err := readResponse(s)
+
+	if err != nil {
+		return err
+	}
+
+	if response[0] != 0x30 {
+		return errors.New("illegal command")
+	}
+
+	return nil
 }
 
 func (s *MMDispenser) Ack() {

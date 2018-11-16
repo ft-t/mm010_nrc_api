@@ -56,7 +56,7 @@ const (
 	InvalidCommand       StatusCode = 0x4F
 )
 
-type DataItem byte
+type DataItem uint16
 
 const (
 	ProgramID                        DataItem = 100

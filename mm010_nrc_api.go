@@ -83,6 +83,7 @@ type MMDispenser struct {
 	config  *serial.Config
 	port    *serial.Port
 	logging bool
+	open    bool
 }
 
 type Status struct {
@@ -110,16 +111,40 @@ func NewConnection(path string, baud Baud, logging bool) (MMDispenser, error) {
 	res.config = c
 	res.port = o
 	res.logging = logging
+	res.open = true
 
 	return res, nil
 }
 
+func (s *MMDispenser) Open() error {
+	p, err := serial.OpenPort(s.config)
+
+	if err != nil {
+		return err
+	}
+
+	s.port = p
+	s.open = true
+
+	return nil
+}
+
+func (s *MMDispenser) Close() error {
+	err := s.port.Close()
+	s.open = false
+
+	return err
+}
+
 func (s *MMDispenser) Status() (Status, error) {
-	sendRequest(s, 0x40, []byte{})
+	status := Status{}
+	err := sendRequest(s, 0x40, []byte{})
+
+	if err != nil {
+		return status, err
+	}
 
 	response, err := readResponse(s)
-
-	status := Status{}
 
 	if err != nil {
 		return status, err
@@ -137,7 +162,11 @@ func (s *MMDispenser) Status() (Status, error) {
 }
 
 func (s *MMDispenser) Purge() (StatusCode, byte, error) {
-	sendRequest(s, 0x41, []byte{})
+	err := sendRequest(s, 0x41, []byte{})
+
+	if err != nil {
+		return 0, 0, err
+	}
 
 	response, err := readResponse(s)
 
@@ -149,7 +178,11 @@ func (s *MMDispenser) Purge() (StatusCode, byte, error) {
 }
 
 func (s *MMDispenser) Dispense(count byte) (StatusCode, byte, byte, error) {
-	sendRequest(s, 0x42, []byte{count + 0x20})
+	err := sendRequest(s, 0x42, []byte{count + 0x20})
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
 
 	response, err := readResponse(s)
 
@@ -161,7 +194,11 @@ func (s *MMDispenser) Dispense(count byte) (StatusCode, byte, byte, error) {
 }
 
 func (s *MMDispenser) TestDispense(count byte) (StatusCode, byte, byte, error) {
-	sendRequest(s, 0x43, []byte{count + 0x20})
+	err := sendRequest(s, 0x43, []byte{count + 0x20})
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
 
 	response, err := readResponse(s)
 
@@ -173,13 +210,22 @@ func (s *MMDispenser) TestDispense(count byte) (StatusCode, byte, byte, error) {
 }
 
 func (s *MMDispenser) Reset() error {
-	sendRequest(s, 0x44, []byte{})
-	_, err := readRespCode(s)
+	err := sendRequest(s, 0x44, []byte{})
+
+	if err != nil {
+		return err
+	}
+
+	_, err = readRespCode(s)
 	return err
 }
 
 func (s *MMDispenser) LastStatus() (StatusCode, byte, byte, error) {
-	sendRequest(s, 0x45, []byte{})
+	err := sendRequest(s, 0x45, []byte{})
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
 
 	response, err := readResponse(s)
 
@@ -191,7 +237,11 @@ func (s *MMDispenser) LastStatus() (StatusCode, byte, byte, error) {
 }
 
 func (s *MMDispenser) ConfigurationStatus() (byte, byte, error) {
-	sendRequest(s, 0x46, []byte{})
+	err := sendRequest(s, 0x46, []byte{})
+
+	if err != nil {
+		return 0, 0, err
+	}
 
 	response, err := readResponse(s)
 
@@ -203,7 +253,11 @@ func (s *MMDispenser) ConfigurationStatus() (byte, byte, error) {
 }
 
 func (s *MMDispenser) DoubleDetectDiagnostics() (StatusCode, byte, byte, error) {
-	sendRequest(s, 0x47, []byte{})
+	err := sendRequest(s, 0x47, []byte{})
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
 
 	response, err := readResponse(s)
 
@@ -215,7 +269,11 @@ func (s *MMDispenser) DoubleDetectDiagnostics() (StatusCode, byte, byte, error) 
 }
 
 func (s *MMDispenser) SensorDiagnostics() (StatusCode, byte, byte, error) {
-	sendRequest(s, 0x48, []byte{})
+	err := sendRequest(s, 0x48, []byte{})
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
 
 	response, err := readResponse(s)
 
@@ -227,7 +285,11 @@ func (s *MMDispenser) SensorDiagnostics() (StatusCode, byte, byte, error) {
 }
 
 func (s *MMDispenser) SingleNoteDispense() (StatusCode, byte, byte, error) {
-	sendRequest(s, 0x4A, []byte{})
+	err := sendRequest(s, 0x4A, []byte{})
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
 
 	response, err := readResponse(s)
 
@@ -239,7 +301,11 @@ func (s *MMDispenser) SingleNoteDispense() (StatusCode, byte, byte, error) {
 }
 
 func (s *MMDispenser) SingleNoteEject() (StatusCode, byte, byte, error) {
-	sendRequest(s, 0x4B, []byte{})
+	err := sendRequest(s, 0x4B, []byte{})
+
+	if err != nil {
+		return 0, 0, 0, err
+	}
 
 	response, err := readResponse(s)
 
@@ -251,7 +317,11 @@ func (s *MMDispenser) SingleNoteEject() (StatusCode, byte, byte, error) {
 }
 
 func (s *MMDispenser) TestMode() (StatusCode, error) {
-	sendRequest(s, 0x54, []byte{})
+	err := sendRequest(s, 0x54, []byte{})
+
+	if err != nil {
+		return 0, err
+	}
 
 	response, err := readResponse(s)
 
@@ -285,7 +355,11 @@ func (s *MMDispenser) ReadData(item DataItem, param string) (string, error) {
 }
 
 func (s *MMDispenser) WriteData(item DataItem, data string) error {
-	sendRequest(s, 0x57, []byte(fmt.Sprintf("D/%3d/%s", item, data)))
+	err := sendRequest(s, 0x57, []byte(fmt.Sprintf("D/%3d/%s", item, data)))
+
+	if err != nil {
+		return err
+	}
 
 	response, err := readResponse(s)
 
@@ -301,11 +375,11 @@ func (s *MMDispenser) WriteData(item DataItem, data string) error {
 }
 
 func (s *MMDispenser) Ack() {
-	s.port.Write([]byte{0x06})
+	_, _ = s.port.Write([]byte{0x06})
 }
 
 func (s *MMDispenser) Nack() {
-	s.port.Write([]byte{0x15})
+	_, _ = s.port.Write([]byte{0x15})
 }
 
 func readResponse(v *MMDispenser) ([]byte, error) {
@@ -461,7 +535,11 @@ func readRespData(v *MMDispenser) ([]byte, error) {
 	return buf, nil
 }
 
-func sendRequest(v *MMDispenser, commandCode byte, bytesData ...[]byte) {
+func sendRequest(v *MMDispenser, commandCode byte, bytesData ...[]byte) error {
+	if !v.open {
+		return errors.New("serial port is closed")
+	}
+
 	buf := new(bytes.Buffer)
 
 	length := 6
@@ -470,26 +548,28 @@ func sendRequest(v *MMDispenser, commandCode byte, bytesData ...[]byte) {
 		length += len(b)
 	}
 
-	binary.Write(buf, binary.LittleEndian, RequestStart)
-	binary.Write(buf, binary.LittleEndian, CommunicationIdentify)
-	binary.Write(buf, binary.LittleEndian, TextStart)
-	binary.Write(buf, binary.LittleEndian, commandCode)
+	_ = binary.Write(buf, binary.LittleEndian, RequestStart)
+	_ = binary.Write(buf, binary.LittleEndian, CommunicationIdentify)
+	_ = binary.Write(buf, binary.LittleEndian, TextStart)
+	_ = binary.Write(buf, binary.LittleEndian, commandCode)
 
 	for _, data := range bytesData {
-		binary.Write(buf, binary.LittleEndian, data)
+		_ = binary.Write(buf, binary.LittleEndian, data)
 	}
 
-	binary.Write(buf, binary.LittleEndian, TextEnd)
+	_ = binary.Write(buf, binary.LittleEndian, TextEnd)
 
 	crc := getChecksum(buf.Bytes())
 
-	binary.Write(buf, binary.LittleEndian, crc)
+	_ = binary.Write(buf, binary.LittleEndian, crc)
 
 	if v.logging {
 		fmt.Printf("-> %X\n", buf.Bytes())
 	}
 
-	v.port.Write(buf.Bytes())
+	_, err := v.port.Write(buf.Bytes())
+
+	return err
 }
 
 func getChecksum(data []byte) byte {

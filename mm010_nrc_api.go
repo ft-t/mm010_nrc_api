@@ -456,21 +456,21 @@ func readRespCode(v *MMDispenser) (ResponseType, error) {
 
 	if buf[0] == 0x06 {
 		if v.logging {
-			fmt.Printf("<- ACK\n")
+			fmt.Printf("mm010_nrc[%v]: <- ACK\n", v.config.Name)
 		}
 		return AckResponse, nil // TODO Ack
 	}
 
 	if buf[0] == 0x15 {
 		if v.logging {
-			fmt.Printf("<- NAK\n")
+			fmt.Printf("mm010_nrc[%v]: <- NAK\n", v.config.Name)
 		}
 		return NackResponse, nil
 	}
 
 	if buf[0] == 0x04 {
 		if v.logging {
-			fmt.Printf("<- EOT\n")
+			fmt.Printf("mm010_nrc[%v]: <- EOT\n", v.config.Name)
 		}
 		return EotResponse, nil
 	}
@@ -516,7 +516,7 @@ func readRespData(v *MMDispenser) ([]byte, error) {
 	}
 
 	if buf[0] != ResponseStart || buf[1] != CommunicationIdentify {
-		fmt.Printf("<- %X\n", buf)
+		fmt.Printf("mm010_nrc[%v]: <- %X\n", v.config.Name, buf)
 		return nil, fmt.Errorf("Response format invalid")
 	}
 
@@ -537,7 +537,7 @@ func readRespData(v *MMDispenser) ([]byte, error) {
 	buf = buf[4 : len(buf)-1]
 
 	if v.logging {
-		fmt.Printf("<- %X\n", buf)
+		fmt.Printf("mm010_nrc[%v]: <- %X\n", v.config.Name, buf)
 	}
 
 	return buf, nil
@@ -572,7 +572,7 @@ func sendRequest(v *MMDispenser, commandCode byte, bytesData ...[]byte) error {
 	_ = binary.Write(buf, binary.LittleEndian, crc)
 
 	if v.logging {
-		fmt.Printf("-> %X\n", buf.Bytes())
+		fmt.Printf("mm010_nrc[%v]: -> %X\n", v.config.Name, buf.Bytes())
 	}
 
 	_, err := v.port.Write(buf.Bytes())

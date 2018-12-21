@@ -4,10 +4,11 @@ import (
 	"fmt"
 	api "mm010_nrc_api"
 	"testing"
+	"time"
 )
 
 func TestConnection(t *testing.T) {
-	c, er := api.NewConnection("COM4", api.Baud4800, true)
+	c, er := api.NewConnection("COM4", api.Baud4800, true, 3 * time.Second)
 
 	//fmt.Println(r)
 	if er != nil {

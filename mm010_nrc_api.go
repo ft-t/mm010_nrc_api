@@ -84,6 +84,7 @@ type MMDispenser struct {
 	port    *serial.Port
 	logging bool
 	open    bool
+	timeout time.Duration
 }
 
 type Status struct {
@@ -96,8 +97,22 @@ type Status struct {
 	AverageLength               byte
 }
 
-func NewConnection(path string, baud Baud, logging bool) (MMDispenser, error) {
-	c := &serial.Config{Name: path, Baud: int(baud), ReadTimeout: 5 * time.Second, Parity: serial.ParityEven, StopBits: serial.Stop1,
+type response struct {
+	data ResponseType
+	err  error
+}
+
+type responseData struct {
+	data []byte
+	err  error
+}
+
+func NewConnection(path string, baud Baud, logging bool, timeout time.Duration) (MMDispenser, error) {
+	if timeout == 0 {
+		timeout = 3 * time.Second
+	}
+
+	c := &serial.Config{Name: path, Baud: int(baud), ReadTimeout: timeout, Parity: serial.ParityEven, StopBits: serial.Stop1,
 		Size: 7}
 
 	o, err := serial.OpenPort(c)
@@ -112,6 +127,7 @@ func NewConnection(path string, baud Baud, logging bool) (MMDispenser, error) {
 	res.port = o
 	res.logging = logging
 	res.open = true
+	res.timeout = timeout
 
 	return res, nil
 }
@@ -224,7 +240,7 @@ func (s *MMDispenser) Reset() error {
 		return err
 	}
 
-	_, err = readRespCode(s)
+	_, err = readRespCodeWithTimeout(s)
 	return err
 }
 
@@ -390,8 +406,20 @@ func (s *MMDispenser) Nack() {
 	_, _ = s.port.Write([]byte{0x15})
 }
 
+func timeout(timeout time.Duration, r chan response) {
+	time.Sleep(timeout)
+
+	r <- response{err: errors.New("timeout")}
+}
+
+func timeoutData(timeout time.Duration, r chan responseData) {
+	time.Sleep(timeout)
+
+	r <- responseData{err: errors.New("timeout")}
+}
+
 func readResponse(v *MMDispenser) ([]byte, error) {
-	resp, err := readRespCode(v)
+	resp, err := readRespCodeWithTimeout(v)
 
 	if err != nil {
 		return nil, err
@@ -401,7 +429,7 @@ func readResponse(v *MMDispenser) ([]byte, error) {
 		return nil, errors.New("Response not ACK")
 	}
 
-	data, err := readRespData(v)
+	data, err := readRespDataWithTimeout(v)
 
 	if err != nil {
 		return nil, err
@@ -409,7 +437,7 @@ func readResponse(v *MMDispenser) ([]byte, error) {
 
 	v.Ack()
 
-	resp, err = readRespCode(v)
+	resp, err = readRespCodeWithTimeout(v)
 
 	if err != nil {
 		return nil, err
@@ -424,21 +452,27 @@ func readResponse(v *MMDispenser) ([]byte, error) {
 	return data, nil
 }
 
+func readRespCodeWithTimeout(s *MMDispenser) (ResponseType, error) {
+	inner := make(chan response)
+
+	go func() {
+		i, v := readRespCode(s)
+		inner <- response{data: i, err: v}
+	}()
+	go timeout(s.timeout, inner)
+
+	v := <-inner
+
+	return v.data, v.err
+}
+
 func readRespCode(v *MMDispenser) (ResponseType, error) {
 	var buf []byte
 	innerBuf := make([]byte, 256)
 
 	totalRead := 0
-	readTriesCount := 0
-	maxReadCount := 1050
 
 	for ; ; {
-		readTriesCount += 1
-
-		if readTriesCount >= maxReadCount {
-			return ErrorResponse, fmt.Errorf("Reads tries exceeded")
-		}
-
 		n, err := v.port.Read(innerBuf)
 
 		if err != nil {
@@ -478,23 +512,29 @@ func readRespCode(v *MMDispenser) (ResponseType, error) {
 	return ErrorResponse, nil
 }
 
+func readRespDataWithTimeout(s *MMDispenser) ([]byte, error) {
+	inner := make(chan responseData)
+
+	go func() {
+		i, v := readRespData(s)
+		inner <- responseData{data: i, err: v}
+	}()
+	go timeoutData(s.timeout, inner)
+
+	v := <-inner
+
+	return v.data, v.err
+}
+
 func readRespData(v *MMDispenser) ([]byte, error) {
 	var buf []byte
 	innerBuf := make([]byte, 256)
 
 	totalRead := 0
-	readTriesCount := 0
-	maxReadCount := 1050
 
 	lastRead := false
 
 	for ; ; {
-		readTriesCount += 1
-
-		if readTriesCount >= maxReadCount {
-			return nil, fmt.Errorf("Reads tries exceeded")
-		}
-
 		n, err := v.port.Read(innerBuf)
 
 		if err != nil {
